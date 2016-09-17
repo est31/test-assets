@@ -108,7 +108,7 @@ enum DownloadOutcome {
 }
 
 fn download_test_file(client :&mut Client,
-		tfile :&TestAssetDef, dir :&str) -> Result<DownloadOutcome, TaError> {
+		tfile :&TestAssetDef, dir :&str, verbose :bool) -> Result<DownloadOutcome, TaError> {
 	use std::io::{Write, Read};
 	use std::fs::File;
 	let mut response = try!(client.get(&tfile.url).send());
@@ -117,6 +117,9 @@ fn download_test_file(client :&mut Client,
 	}
 	let mut hasher = Sha256::new();
 	let mut file = try!(File::create(format!("{}/{}", dir, tfile.filename)));
+	let mut printer_counter = 0;
+	let mut processed_len = 0;
+	let total_len = response.headers.get::<hyper::header::ContentLength>().map(|v| v.0).clone();
 	loop {
 		let mut arr = [0; 256];
 		let len = try!(response.read(&mut arr));
@@ -127,6 +130,18 @@ fn download_test_file(client :&mut Client,
 		let data = &arr[.. len];
 		hasher.input(data);
 		try!(file.write_all(data));
+		processed_len += len;
+		if verbose {
+			printer_counter += 1;
+			if printer_counter % 10 == 0 {
+				printer_counter = 0;
+				if let Some(tlen) = total_len {
+					// Print stats
+					let percent = ((processed_len as f64 / tlen as f64) * 100.0).floor();
+					println!("{}%", percent);
+				}
+			}
+		}
 	}
 	let expected_hash = try!(Sha256Hash::from_hex(&tfile.hash).map_err(|_| TaError::BadHashFormat));
 	if Sha256Hash::from_digest(&mut hasher) == expected_hash {
@@ -144,7 +159,7 @@ pub fn download_test_files(defs :&[TestAssetDef],
 		if verbose {
 			println!("Fetching file {} ...", tfile.filename);
 		}
-		let outcome = try!(download_test_file(&mut client, tfile, dir));
+		let outcome = try!(download_test_file(&mut client, tfile, dir, verbose));
 		if verbose {
 			use self::DownloadOutcome::*;
 			print!("  => ");
