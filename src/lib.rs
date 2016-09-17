@@ -102,7 +102,7 @@ pub fn download_test_files(defs :&[TestFileDef],
 			match outcome {
 				Success => println!("Success"),
 				DownloadFailed(code) => println!("Download failed with code {}", code),
-				HashMismatch(found) => println!("Hash mismatch, found hash {}, expected hash {}", found, tfile.hash),
+				HashMismatch(found) => println!("Hash mismatch: found {}, expected {}", found, tfile.hash),
 			}
 		}
 	}
