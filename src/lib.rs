@@ -26,7 +26,7 @@ use sha2::digest::Digest;
 /// Definition for a test file
 ///
 ///
-pub struct TestFileDef {
+pub struct TestAssetDef {
 	/// Name of the file on disk. This should be unique for the file.
 	pub filename :String,
 	/// Sha256 hash of the file's data in hexadecimal lowercase representation
@@ -83,21 +83,21 @@ impl Sha256Hash {
 }
 
 #[derive(Debug)]
-pub enum TfError {
+pub enum TaError {
 	Io(io::Error),
 	Hyper(hyper::error::Error),
 	BadHashFormat,
 }
 
-impl From<io::Error> for TfError {
-	fn from(err :io::Error) -> TfError {
-		TfError::Io(err)
+impl From<io::Error> for TaError {
+	fn from(err :io::Error) -> TaError {
+		TaError::Io(err)
 	}
 }
 
-impl From<hyper::error::Error> for TfError {
-	fn from(err :hyper::error::Error) -> TfError {
-		TfError::Hyper(err)
+impl From<hyper::error::Error> for TaError {
+	fn from(err :hyper::error::Error) -> TaError {
+		TaError::Hyper(err)
 	}
 }
 
@@ -108,7 +108,7 @@ enum DownloadOutcome {
 }
 
 fn download_test_file(client :&mut Client,
-		tfile :&TestFileDef, dir :&str) -> Result<DownloadOutcome, TfError> {
+		tfile :&TestAssetDef, dir :&str) -> Result<DownloadOutcome, TaError> {
 	use std::io::{Write, Read};
 	use std::fs::File;
 	let mut response = try!(client.get(&tfile.url).send());
@@ -128,7 +128,7 @@ fn download_test_file(client :&mut Client,
 		hasher.input(data);
 		try!(file.write_all(data));
 	}
-	let expected_hash = try!(Sha256Hash::from_hex(&tfile.hash).map_err(|_| TfError::BadHashFormat));
+	let expected_hash = try!(Sha256Hash::from_hex(&tfile.hash).map_err(|_| TaError::BadHashFormat));
 	if Sha256Hash::from_digest(&mut hasher) == expected_hash {
 		return Ok(DownloadOutcome::Success);
 	} else {
@@ -137,8 +137,8 @@ fn download_test_file(client :&mut Client,
 }
 
 /// Downloads the test files into the passed directory.
-pub fn download_test_files(defs :&[TestFileDef],
-		dir :&str, verbose :bool) -> Result<(), TfError> {
+pub fn download_test_files(defs :&[TestAssetDef],
+		dir :&str, verbose :bool) -> Result<(), TaError> {
 	let mut client = Client::new();
 	for tfile in defs.iter() {
 		if verbose {
