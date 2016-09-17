@@ -20,6 +20,8 @@ extern crate hyper;
 use std::io;
 use hyper::client::Client;
 use hyper::status::StatusCode;
+use sha2::sha2::Sha256;
+use sha2::digest::Digest;
 
 /// Definition for a test file
 ///
@@ -33,10 +35,58 @@ pub struct TestFileDef {
 	pub url :String,
 }
 
+/// A type for a Sha256 hash value
+///
+/// Provides conversion functionality to hex representation and back
+#[derive(PartialEq, Eq)]
+pub struct Sha256Hash([u8; 32]);
+
+impl Sha256Hash {
+
+	pub fn from_digest(sha :&mut Sha256) -> Self {
+		let mut res = Sha256Hash([0; 32]);
+		sha.result(&mut res.0);
+		return res;
+	}
+
+	/// Converts the hexadecimal string to a hash value
+	pub fn from_hex(s :&str) -> Result<Self, ()> {
+		let mut res = Sha256Hash([0; 32]);
+		let mut idx = 0;
+		let mut iter = s.chars();
+		loop {
+			let upper = match iter.next().and_then(|c| c.to_digit(16)) {
+				Some(v) => v as u8,
+				None => try!(Err(())),
+			};
+			let lower = match iter.next().and_then(|c| c.to_digit(16)) {
+				Some(v) => v as u8,
+				None => try!(Err(())),
+			};
+			res.0[idx] = (upper << 4) | lower;
+			idx += 1;
+			if idx == 32 {
+				break;
+			}
+		}
+		return Ok(res);
+	}
+	/// Converts the hash value to hexadecimal
+	pub fn to_hex(&self) -> String {
+		let mut res = String::with_capacity(64);
+		for v in self.0.iter() {
+			use std::char::from_digit;
+			res.push(from_digit(*v as u32, 16).unwrap());
+		}
+		return res;
+	}
+}
+
 #[derive(Debug)]
 pub enum TfError {
 	Io(io::Error),
 	Hyper(hyper::error::Error),
+	BadHashFormat,
 }
 
 impl From<io::Error> for TfError {
@@ -61,8 +111,6 @@ fn download_test_file(client :&mut Client,
 		tfile :&TestFileDef, dir :&str) -> Result<DownloadOutcome, TfError> {
 	use std::io::{Write, Read};
 	use std::fs::File;
-	use sha2::digest::Digest;
-	use sha2::sha2::Sha256;
 	let mut response = try!(client.get(&tfile.url).send());
 	if !response.status.is_success() {
 		return Ok(DownloadOutcome::DownloadFailed(response.status));
@@ -80,7 +128,8 @@ fn download_test_file(client :&mut Client,
 		hasher.input(data);
 		try!(file.write_all(data));
 	}
-	if hasher.result_str() == tfile.hash {
+	let expected_hash = try!(Sha256Hash::from_hex(&tfile.hash).map_err(|_| TfError::BadHashFormat));
+	if Sha256Hash::from_digest(&mut hasher) == expected_hash {
 		return Ok(DownloadOutcome::Success);
 	} else {
 		return Ok(DownloadOutcome::HashMismatch(hasher.result_str().to_owned()));
