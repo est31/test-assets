@@ -1,0 +1,8 @@
+[package]
+name = "test-assets"
+version = "0.1.0"
+authors = ["est31 <MTest31@outlook.com>"]
+
+[dependencies]
+hyper = "0.9"
+sha2 = "0.1"
