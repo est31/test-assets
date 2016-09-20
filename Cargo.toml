@@ -4,6 +4,7 @@ version = "0.1.0"
 license = "MIT/Apache-2.0"
 description = "Download test assets, managing them outside of git"
 documentation = "https://docs.rs/test-assets/0.1.0/"
+repository = "https://github.com/est31/test-assets"
 readme = "README.md"
 authors = ["est31 <MTest31@outlook.com>"]
 
