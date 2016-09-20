@@ -8,10 +8,37 @@
 #![cfg_attr(test, deny(warnings))]
 
 /*!
-Download test assets
+Download test assets and cache them on disk
 
 This library downloads test assets using http(s),
 and ensures integrity by comparing those assets to a hash.
+
+Example:
+
+```
+#[test]
+fn some_awesome_test() {
+	let asset_defs = [
+		TestAssetDef {
+			filename : format!("file_a.png"),
+			hash : format!("<sha256 here>"),
+			url : format!("https://url/to/a.png"),
+		},
+		TestAssetDef {
+			filename : format!("file_b.png"),
+			hash : format!("<sha256 here>"),
+			url : format!("https://url/to/a.png"),
+		},
+	];
+	test_assets::download_test_files(&asset_defs,
+		"test-assets", true).unwrap();
+	// use your files here
+	// with path under test-assets/file_a.png and test-assets/file_b.png
+}
+```
+
+If you have run the test once, it will re-use the files
+instead of re-downloading them.
 */
 
 extern crate sha2;
