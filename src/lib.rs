@@ -17,11 +17,16 @@ and ensures integrity by comparing those assets to a hash.
 extern crate sha2;
 extern crate hyper;
 
+mod hash_list;
+
 use std::io;
 use hyper::client::Client;
 use hyper::status::StatusCode;
 use sha2::sha2::Sha256;
 use sha2::digest::Digest;
+use hash_list::HashList;
+use std::fs::create_dir_all;
+
 
 /// Definition for a test file
 ///
@@ -38,7 +43,7 @@ pub struct TestAssetDef {
 /// A type for a Sha256 hash value
 ///
 /// Provides conversion functionality to hex representation and back
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Hash, Clone)]
 pub struct Sha256Hash([u8; 32]);
 
 impl Sha256Hash {
@@ -76,7 +81,8 @@ impl Sha256Hash {
 		let mut res = String::with_capacity(64);
 		for v in self.0.iter() {
 			use std::char::from_digit;
-			res.push(from_digit(*v as u32, 16).unwrap());
+			res.push(from_digit(*v as u32 >> 4, 16).unwrap());
+			res.push(from_digit(*v as u32 & 15, 16).unwrap());
 		}
 		return res;
 	}
@@ -86,6 +92,7 @@ impl Sha256Hash {
 pub enum TaError {
 	Io(io::Error),
 	Hyper(hyper::error::Error),
+	DownloadFailed(StatusCode),
 	BadHashFormat,
 }
 
@@ -102,9 +109,8 @@ impl From<hyper::error::Error> for TaError {
 }
 
 enum DownloadOutcome {
-	Success,
+	WithHash(Sha256Hash),
 	DownloadFailed(StatusCode),
-	HashMismatch(String),
 }
 
 fn download_test_file(client :&mut Client,
@@ -133,42 +139,67 @@ fn download_test_file(client :&mut Client,
 		processed_len += len;
 		if verbose {
 			printer_counter += 1;
-			if printer_counter % 10 == 0 {
+			if printer_counter % 1000 == 0 {
 				printer_counter = 0;
 				if let Some(tlen) = total_len {
 					// Print stats
 					let percent = ((processed_len as f64 / tlen as f64) * 100.0).floor();
-					println!("{}%", percent);
+					print!(" {}%", percent);
 				}
 			}
 		}
 	}
-	let expected_hash = try!(Sha256Hash::from_hex(&tfile.hash).map_err(|_| TaError::BadHashFormat));
-	if Sha256Hash::from_digest(&mut hasher) == expected_hash {
-		return Ok(DownloadOutcome::Success);
-	} else {
-		return Ok(DownloadOutcome::HashMismatch(hasher.result_str().to_owned()));
-	}
+	return Ok(DownloadOutcome::WithHash(Sha256Hash::from_digest(&mut hasher)));
 }
 
 /// Downloads the test files into the passed directory.
 pub fn download_test_files(defs :&[TestAssetDef],
 		dir :&str, verbose :bool) -> Result<(), TaError> {
 	let mut client = Client::new();
+
+	use std::io::ErrorKind;
+
+	let hash_list_path = format!("{}/hash_list", dir);
+	let mut hash_list = match HashList::from_file(&hash_list_path) {
+		Ok(l) => l,
+		Err(TaError::Io(ref e)) if e.kind() == ErrorKind::NotFound => HashList::new(),
+		e => { try!(e); unreachable!() },
+	};
+	try!(create_dir_all(dir));
 	for tfile in defs.iter() {
+		let tfile_hash = try!(Sha256Hash::from_hex(&tfile.hash).map_err(|_| TaError::BadHashFormat));
+		if hash_list.get_hash(&tfile.filename).map(|h| h == &tfile_hash)
+				.unwrap_or(false) {
+			// Hash match
+			if verbose {
+				println!("File {} has matching hash inside hash list, skipping download", tfile.filename);
+			}
+			continue;
+		}
 		if verbose {
-			println!("Fetching file {} ...", tfile.filename);
+			print!("Fetching file {} ...", tfile.filename);
 		}
 		let outcome = try!(download_test_file(&mut client, tfile, dir, verbose));
+		use self::DownloadOutcome::*;
+		match &outcome {
+			&DownloadFailed(code) => return Err(TaError::DownloadFailed(code)),
+			&WithHash(ref hash) => hash_list.add_entry(&tfile.filename, hash),
+		}
 		if verbose {
-			use self::DownloadOutcome::*;
 			print!("  => ");
-			match outcome {
-				Success => println!("Success"),
-				DownloadFailed(code) => println!("Download failed with code {}", code),
-				HashMismatch(found) => println!("Hash mismatch: found {}, expected {}", found, tfile.hash),
+			match &outcome {
+				&DownloadFailed(code) => println!("Download failed with code {}", code),
+				&WithHash(ref found_hash) => {
+					if found_hash == &tfile_hash {
+						println!("Success")
+					} else {
+						println!("Hash mismatch: found {}, expected {}",
+							found_hash.to_hex(), tfile.hash)
+					}
+				 },
 			}
 		}
 	}
-	panic!();
+	try!(hash_list.to_file(&hash_list_path));
+	Ok(())
 }
