@@ -8,12 +8,15 @@
 #![cfg_attr(test, deny(warnings))]
 
 /*!
-Download test assets and cache them on disk
+Download test assets, managing them outside of git.
 
 This library downloads test assets using http(s),
 and ensures integrity by comparing those assets to a hash.
 
-Example:
+By managing the download separately, you can keep them
+out of VCS and don't make them bloat your repository.
+
+Usage example:
 
 ```
 #[test]
