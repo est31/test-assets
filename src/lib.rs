@@ -174,6 +174,7 @@ fn download_test_file(client :&mut Easy,
 pub fn download_test_files(defs :&[TestAssetDef],
 		dir :&str, verbose :bool) -> Result<(), TaError> {
 	let mut client = Easy::new();
+	try!(client.follow_location(true));
 
 	use std::io::ErrorKind;
 
