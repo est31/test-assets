@@ -45,13 +45,12 @@ instead of re-downloading them.
 */
 
 extern crate sha2;
-extern crate hyper;
+extern crate curl;
 
 mod hash_list;
 
 use std::io;
-use hyper::client::Client;
-use hyper::status::StatusCode;
+use curl::easy::Easy;
 use sha2::sha2::Sha256;
 use sha2::digest::Digest;
 use hash_list::HashList;
@@ -121,8 +120,8 @@ impl Sha256Hash {
 #[derive(Debug)]
 pub enum TaError {
 	Io(io::Error),
-	Hyper(hyper::error::Error),
-	DownloadFailed(StatusCode),
+	Curl(curl::Error),
+	DownloadFailed(u32),
 	BadHashFormat,
 }
 
@@ -132,52 +131,41 @@ impl From<io::Error> for TaError {
 	}
 }
 
-impl From<hyper::error::Error> for TaError {
-	fn from(err :hyper::error::Error) -> TaError {
-		TaError::Hyper(err)
+impl From<curl::Error> for TaError {
+	fn from(err :curl::Error) -> TaError {
+		TaError::Curl(err)
 	}
 }
 
 enum DownloadOutcome {
 	WithHash(Sha256Hash),
-	DownloadFailed(StatusCode),
+	DownloadFailed(u32),
 }
 
-fn download_test_file(client :&mut Client,
-		tfile :&TestAssetDef, dir :&str, verbose :bool) -> Result<DownloadOutcome, TaError> {
-	use std::io::{Write, Read};
+fn download_test_file(client :&mut Easy,
+		tfile :&TestAssetDef, dir :&str) -> Result<DownloadOutcome, TaError> {
+	use std::io::Write;
 	use std::fs::File;
-	let mut response = try!(client.get(&tfile.url).send());
-	if !response.status.is_success() {
-		return Ok(DownloadOutcome::DownloadFailed(response.status));
+	try!(client.url(&tfile.url));
+	let mut content = Vec::new();
+
+	{
+		let mut transfer = client.transfer();
+		try!(transfer.write_function(|data| {
+			content.extend_from_slice(data);
+			Ok(data.len())
+		}));
+		try!(transfer.perform());
 	}
+
 	let mut hasher = Sha256::new();
 	let mut file = try!(File::create(format!("{}/{}", dir, tfile.filename)));
-	let mut printer_counter = 0;
-	let mut processed_len = 0;
-	let total_len = response.headers.get::<hyper::header::ContentLength>().map(|v| v.0).clone();
-	loop {
-		let mut arr = [0; 256];
-		let len = try!(response.read(&mut arr));
-		if len == 0 {
-			// EOF reached.
-			break;
-		}
-		let data = &arr[.. len];
-		hasher.input(data);
-		try!(file.write_all(data));
-		processed_len += len;
-		if verbose {
-			printer_counter += 1;
-			if printer_counter % 1000 == 0 {
-				printer_counter = 0;
-				if let Some(tlen) = total_len {
-					// Print stats
-					let percent = ((processed_len as f64 / tlen as f64) * 100.0).floor();
-					print!(" {}%", percent);
-				}
-			}
-		}
+	try!(file.write_all(&content));
+	hasher.input(&content);
+
+	let response_code = try!(client.response_code());
+	if response_code < 200 || response_code > 299 {
+		return Ok(DownloadOutcome::DownloadFailed(response_code));
 	}
 	return Ok(DownloadOutcome::WithHash(Sha256Hash::from_digest(&mut hasher)));
 }
@@ -185,7 +173,7 @@ fn download_test_file(client :&mut Client,
 /// Downloads the test files into the passed directory.
 pub fn download_test_files(defs :&[TestAssetDef],
 		dir :&str, verbose :bool) -> Result<(), TaError> {
-	let mut client = Client::new();
+	let mut client = Easy::new();
 
 	use std::io::ErrorKind;
 
@@ -209,7 +197,7 @@ pub fn download_test_files(defs :&[TestAssetDef],
 		if verbose {
 			print!("Fetching file {} ...", tfile.filename);
 		}
-		let outcome = try!(download_test_file(&mut client, tfile, dir, verbose));
+		let outcome = try!(download_test_file(&mut client, tfile, dir));
 		use self::DownloadOutcome::*;
 		match &outcome {
 			&DownloadFailed(code) => return Err(TaError::DownloadFailed(code)),

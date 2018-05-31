@@ -9,5 +9,5 @@ readme = "README.md"
 authors = ["est31 <MTest31@outlook.com>"]
 
 [dependencies]
-hyper = "0.9"
+curl = "0.4"
 sha2 = "0.1"
