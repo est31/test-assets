@@ -4,7 +4,7 @@
 // at your option. Please see the LICENSE file
 // attached to this source distribution for details.
 
-#![deny(unsafe_code)]
+#![forbid(unsafe_code)]
 #![cfg_attr(test, deny(warnings))]
 
 /*!
