@@ -164,7 +164,7 @@ fn download_test_file(client :&mut Easy,
 	hasher.input(&content);
 
 	let response_code = try!(client.response_code());
-	if response_code < 200 || response_code > 299 {
+	if response_code < 200 || response_code > 399 {
 		return Ok(DownloadOutcome::DownloadFailed(response_code));
 	}
 	return Ok(DownloadOutcome::WithHash(Sha256Hash::from_digest(&mut hasher)));
