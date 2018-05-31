@@ -4,7 +4,7 @@ Download test assets, managing them outside of git.
 
 [crates.io](https://crates.io/crates/test-assets)
 
-[Documentation](https://docs.rs/test-assets/0.1.0/)
+[Documentation](https://docs.rs/test-assets/0.2.0/)
 
 git is nice for many purposes, but it stores the whole history.
 Once added, an asset will bloat your git repository even after
